@@ -7,16 +7,16 @@
     "client_token": {
         "description": "Client Token",
         "type": "string",
-        "hint": "请输入 Client Token"
+        "hint": "请输入 Gotify Client Token"
     },
     "application": {
         "description": "Application",
         "type": "list",
-        "hint": "请输入要监听的 Application, 留空则监听全部."
+        "hint": "请输入要监听的 Gotify Application, 留空则监听全部."
     },
-    "chat_id": {
+    "umo": {
         "description": "UMO",
         "type": "list",
-        "hint": "请输入推送的会话, 可以推送多个, 值为 /sid 的 UMO"
+        "hint": "请输入推送的会话, 可以推送多个, 值为 /sid 的 UMO."
     }
 }

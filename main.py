@@ -1,4 +1,4 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event.filter import PermissionType
 from astrbot.api import logger
@@ -14,7 +14,7 @@ from astrbot.core.message.message_event_result import MessageChain
     "astrbot_plugin_gotify_push",
     "ksbjt",
     "监听 Gotify 消息并推送",
-    "1.0.1",
+    "1.0.2",
 )
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -24,7 +24,7 @@ class MyPlugin(Star):
         self.server = config.get("server")
         self.token = config.get("client_token")
         self.monitor_app_name = set(config.get("application") or [])
-        self.chat_id = list(config.get("chat_id") or [])
+        self.chat_id = list(config.get("umo") or [])
         self.gotify: AsyncGotify = AsyncGotify(
             base_url=self.server, client_token=self.token
         )
@@ -84,11 +84,11 @@ class MyPlugin(Star):
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("gotify_register")
     async def helloworld(self, event: AstrMessageEvent):
-        logger.info(f"当前会话的chat_id: {event.unified_msg_origin}")
+        logger.info(f"当前会话的 chat_id: {event.unified_msg_origin}")
         self.chat_id.append(event.unified_msg_origin)
         self.chat_id = list(set(self.chat_id))  # 去重
-        self.config["chat_id"] = self.chat_id
-        logger.info(f"所有已注册的chat_id: {self.chat_id}")
+        self.config["umo"] = self.chat_id
+        logger.info(f"所有已注册的 chat_id: {self.chat_id}")
         self.config.save_config()
         yield event.plain_result("当前会话注册成功")
 
