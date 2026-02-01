@@ -1,6 +1,6 @@
 {
     "server": {
-        "description": "监听服务器",
+        "description": "Server",
         "type": "string",
         "hint": "请输入服务器地址"
     },
@@ -15,8 +15,8 @@
         "hint": "请输入要监听的 Application, 留空则监听全部."
     },
     "chat_id": {
-        "description": "会话 ID",
+        "description": "UMO",
         "type": "list",
-        "hint": "推送的会话 ID, 可以推送多个."
+        "hint": "请输入推送的会话, 可以推送多个, 值为 /sid 的 UMO"
     }
 }
