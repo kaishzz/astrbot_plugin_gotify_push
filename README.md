@@ -19,6 +19,6 @@
 | --- | --- |
 | `/gotify_add <umo> <app>` | 给指定 UMO 添加一个监听应用 |
 | `/gotify_del <umo> [app]` | 删除指定 UMO 的某个应用；不填 app 时删除该 UMO 全部订阅 |
-| `/gotify_查看` | 查询所有 UMO 的订阅 |
-| `/gotify_查看 <umo>` | 查询指定 UMO 的订阅应用 |
+| `/gotify_list` | 查询所有 UMO 的订阅 |
+| `/gotify_list <umo>` | 查询指定 UMO 的订阅应用 |
 

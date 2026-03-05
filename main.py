@@ -1,6 +1,5 @@
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api.event.filter import PermissionType
 from astrbot.api import logger
 from astrbot.api import AstrBotConfig
 from gotify import AsyncGotify
@@ -14,7 +13,7 @@ from astrbot.core.message.message_event_result import MessageChain
     "astrbot_plugin_gotify_push",
     "ksbjt",
     "监听 Gotify 消息并推送",
-    "1.1.0",
+    "1.1.1",
 )
 class MyPlugin(Star):
     STORAGE_KEY = "umo_app_subscriptions"
@@ -84,7 +83,7 @@ class MyPlugin(Star):
         parts = message_str.split()
         if not parts:
             return []
-        command_aliases = {"gotify_add", "gotify_del", "gotify_view", "gotify_查看"}
+        command_aliases = {"gotify_add", "gotify_del", "gotify_list"}
         first = parts[0].lstrip("/")
         if first in command_aliases:
             return parts[1:]
@@ -154,9 +153,12 @@ class MyPlugin(Star):
                 await asyncio.sleep(60)  # 等待 1 分钟后重连
         pass
 
-    @filter.permission_type(PermissionType.ADMIN)
     @filter.command("gotify_add")
     async def gotify_add(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可用")
+            return
+
         args = self.parse_command_args(event)
         if len(args) < 2:
             yield event.plain_result("用法: /gotify_add <umo> <app>")
@@ -183,9 +185,12 @@ class MyPlugin(Star):
             f"添加成功: {umo} -> {app}\n当前该 UMO 共监听 {app_count} 个应用"
         )
 
-    @filter.permission_type(PermissionType.ADMIN)
     @filter.command("gotify_del")
     async def gotify_del(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可用")
+            return
+
         args = self.parse_command_args(event)
         if not args:
             yield event.plain_result("用法: /gotify_del <umo> [app]")
@@ -225,12 +230,15 @@ class MyPlugin(Star):
 
         yield event.plain_result(f"已删除订阅: {umo} -> {app}")
 
-    @filter.permission_type(PermissionType.ADMIN)
-    @filter.command("gotify_view", alias={"gotify_查看"})
-    async def gotify_view(self, event: AstrMessageEvent):
+    @filter.command("gotify_list")
+    async def gotify_list(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可用")
+            return
+
         args = self.parse_command_args(event)
         if len(args) > 1:
-            yield event.plain_result("用法: /gotify_查看 [umo]")
+            yield event.plain_result("用法: /gotify_list [umo]")
             return
 
         async with self.subscriptions_lock:
