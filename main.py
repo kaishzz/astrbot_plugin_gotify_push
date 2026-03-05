@@ -13,10 +13,11 @@ from astrbot.core.message.message_event_result import MessageChain
     "astrbot_plugin_gotify_push",
     "ksbjt",
     "监听 Gotify 消息并推送",
-    "1.2.3",
+    "1.2.5",
 )
 class MyPlugin(Star):
     STORAGE_KEY = "umo_app_subscriptions"
+    CLEANUP_INTERVAL_SECONDS = 600
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -111,14 +112,15 @@ class MyPlugin(Star):
     def find_application_matches_in_cache(
         self, identifier: str
     ) -> Tuple[List[Tuple[str, Dict]], str]:
-        normalized_identifier = self.normalize_text(identifier)
-        if not normalized_identifier:
+        token_identifier = self.normalize_text(identifier)
+        name_identifier = self.normalize_text(identifier)
+        if not token_identifier and not name_identifier:
             return [], ""
 
         token_matches: List[Tuple[str, Dict]] = []
         for app_id, app_info in self.cache_app.items():
             app_token = self.normalize_text(app_info.get("token"))
-            if app_token and normalized_identifier == app_token:
+            if app_token and token_identifier == app_token:
                 token_matches.append((app_id, app_info))
         if token_matches:
             return token_matches, "token"
@@ -126,7 +128,7 @@ class MyPlugin(Star):
         name_matches: List[Tuple[str, Dict]] = []
         for app_id, app_info in self.cache_app.items():
             app_name = self.normalize_text(app_info.get("name"))
-            if app_name and normalized_identifier == app_name:
+            if app_name and name_identifier == app_name:
                 name_matches.append((app_id, app_info))
         if name_matches:
             return name_matches, "name"
@@ -176,8 +178,6 @@ class MyPlugin(Star):
             for app in self.cache_app.values()
             if self.normalize_text(app.get("token"))
         }
-        if not known_tokens:
-            return 0
 
         removed_count = 0
         async with self.subscriptions_lock:
@@ -193,6 +193,23 @@ class MyPlugin(Star):
                 await self.save_subscriptions_locked()
 
         return removed_count
+
+    async def run_periodic_cleanup(self):
+        while True:
+            try:
+                await asyncio.sleep(self.CLEANUP_INTERVAL_SECONDS)
+                if await self.update_applications():
+                    removed_count = await self.cleanup_deleted_subscriptions()
+                    if removed_count > 0:
+                        logger.info(
+                            f"定时清理完成，已自动清理 {removed_count} 条失效订阅(token)"
+                        )
+            except asyncio.CancelledError:
+                logger.info("定时清理任务已停止")
+                raise
+            except Exception as e:
+                logger.error(f"定时清理任务异常: {e}")
+                await asyncio.sleep(5)
 
     @staticmethod
     def parse_command_args(event: AstrMessageEvent) -> List[str]:
@@ -215,6 +232,7 @@ class MyPlugin(Star):
             if removed_count > 0:
                 logger.info(f"已自动清理 {removed_count} 条失效订阅(token)")
         self.listen_task = asyncio.create_task(self.start_listen())
+        self.cleanup_task = asyncio.create_task(self.run_periodic_cleanup())
         logger.info(
             f"插件初始化完成, 已加载 {len(self.umo_app_subscriptions)} 个 UMO 订阅"
         )
@@ -364,7 +382,8 @@ class MyPlugin(Star):
         removed_token_count = 0
 
         if app:
-            await self.update_applications()
+            if await self.update_applications():
+                await self.cleanup_deleted_subscriptions()
             matched_apps, _ = self.find_application_matches_in_cache(app)
             remove_candidates.add(app)
             for _, app_info in matched_apps:
@@ -490,3 +509,5 @@ class MyPlugin(Star):
         if hasattr(self, "listen_task") and not self.listen_task.done():
             logger.info("Gotify 连接关闭")
             self.listen_task.cancel()
+        if hasattr(self, "cleanup_task") and not self.cleanup_task.done():
+            self.cleanup_task.cancel()
