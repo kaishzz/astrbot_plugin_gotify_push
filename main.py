@@ -5,7 +5,7 @@ from astrbot.api import AstrBotConfig
 from gotify import AsyncGotify
 from gotify.response_types import Message
 import asyncio
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set, Tuple
 from astrbot.core.message.message_event_result import MessageChain
 
 
@@ -13,7 +13,7 @@ from astrbot.core.message.message_event_result import MessageChain
     "astrbot_plugin_gotify_push",
     "ksbjt",
     "监听 Gotify 消息并推送",
-    "1.1.2",
+    "1.2.1",
 )
 class MyPlugin(Star):
     STORAGE_KEY = "umo_app_subscriptions"
@@ -76,18 +76,82 @@ class MyPlugin(Star):
         await self.put_kv_data(self.STORAGE_KEY, payload)
 
     @staticmethod
-    def build_app_identifiers(app_id: str, app_info: Dict) -> Set[str]:
-        identifiers = {app_id}
+    def normalize_text(value) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return ""
 
-        app_name = app_info.get("name")
-        if isinstance(app_name, str) and app_name.strip():
-            identifiers.add(app_name.strip())
+    @classmethod
+    def build_app_identifiers(cls, app_info: Dict) -> Set[str]:
+        identifiers = set()
+        app_name = cls.normalize_text(app_info.get("name"))
+        app_token = cls.normalize_text(app_info.get("token"))
 
-        app_token = app_info.get("token")
-        if isinstance(app_token, str) and app_token.strip():
-            identifiers.add(app_token.strip())
+        if app_name:
+            identifiers.add(app_name)
+        if app_token:
+            identifiers.add(app_token)
 
         return identifiers
+
+    @classmethod
+    def format_app_display(cls, app_info: Dict, fallback: str = "") -> str:
+        app_name = cls.normalize_text(app_info.get("name"))
+        app_token = cls.normalize_text(app_info.get("token"))
+
+        if app_name and app_token:
+            return f"{app_name} (token: {app_token})"
+        if app_name:
+            return app_name
+        if app_token:
+            return f"token: {app_token}"
+        return cls.normalize_text(fallback)
+
+    def resolve_application_in_cache(
+        self, identifier: str
+    ) -> Tuple[Optional[str], Optional[Dict], str]:
+        normalized_identifier = self.normalize_text(identifier)
+        if not normalized_identifier:
+            return None, None, ""
+
+        for app_id, app_info in self.cache_app.items():
+            app_token = self.normalize_text(app_info.get("token"))
+            if app_token and normalized_identifier == app_token:
+                return app_id, app_info, "token"
+
+        for app_id, app_info in self.cache_app.items():
+            app_name = self.normalize_text(app_info.get("name"))
+            if app_name and normalized_identifier == app_name:
+                return app_id, app_info, "name"
+
+        return None, None, ""
+
+    async def resolve_application_by_identifier(
+        self, identifier: str
+    ) -> Tuple[Optional[str], Optional[Dict], str]:
+        app_id, app_info, matched_by = self.resolve_application_in_cache(identifier)
+        if app_id:
+            return app_id, app_info, matched_by
+
+        await self.update_applications()
+        return self.resolve_application_in_cache(identifier)
+
+    def format_subscription_values(self, values: List[str]) -> List[str]:
+        formatted_values: List[str] = []
+        seen = set()
+
+        for value in values:
+            _, app_info, _ = self.resolve_application_in_cache(value)
+            display = value
+            if app_info:
+                display = self.format_app_display(app_info, fallback=value)
+
+            if display in seen:
+                continue
+            seen.add(display)
+            formatted_values.append(display)
+
+        return formatted_values
 
     @staticmethod
     def parse_command_args(event: AstrMessageEvent) -> List[str]:
@@ -97,7 +161,7 @@ class MyPlugin(Star):
         parts = message_str.split()
         if not parts:
             return []
-        command_aliases = {"gotify_add", "gotify_del", "gotify_list"}
+        command_aliases = {"gotify_add", "gotify_del", "gotify_list", "gotify_clear"}
         first = parts[0].lstrip("/")
         if first in command_aliases:
             return parts[1:]
@@ -131,7 +195,11 @@ class MyPlugin(Star):
             logger.info(f"appid {app_id} 对应应用缺少 name")
             return
 
-        app_identifiers = self.build_app_identifiers(app_id, app_info)
+        app_identifiers = self.build_app_identifiers(app_info)
+        if not app_identifiers:
+            logger.info(f"appid {app_id} 对应应用缺少可匹配标识(name/token)")
+            return
+
         async with self.subscriptions_lock:
             target_umos = [
                 umo
@@ -176,28 +244,39 @@ class MyPlugin(Star):
 
         args = self.parse_command_args(event)
         if len(args) < 2:
-            yield event.plain_result("用法: /gotify_add <umo> <app|appid|token>")
+            yield event.plain_result("用法: /gotify_add <umo> <app|token>")
             return
 
         umo = args[0].strip()
         app = " ".join(args[1:]).strip()
         if not umo or not app:
-            yield event.plain_result("用法: /gotify_add <umo> <app|appid|token>")
+            yield event.plain_result("用法: /gotify_add <umo> <app|token>")
             return
+
+        _, resolved_app_info, _ = await self.resolve_application_by_identifier(app)
+        if not resolved_app_info:
+            yield event.plain_result("未找到应用，请填写 app name 或 app token")
+            return
+
+        store_value = self.normalize_text(resolved_app_info.get("token"))
+        if not store_value:
+            yield event.plain_result("该应用未返回 token，无法添加订阅")
+            return
+        display_target = self.format_app_display(resolved_app_info, fallback=store_value)
 
         async with self.subscriptions_lock:
             apps = self.umo_app_subscriptions.setdefault(umo, set())
-            existed = app in apps
-            apps.add(app)
+            existed = store_value in apps
+            apps.add(store_value)
             await self.save_subscriptions_locked()
             app_count = len(apps)
 
         if existed:
-            yield event.plain_result(f"订阅已存在: {umo} -> {app}")
+            yield event.plain_result(f"该应用已添加: {umo} -> {display_target}")
             return
 
         yield event.plain_result(
-            f"添加成功: {umo} -> {app}\n当前该 UMO 共监听 {app_count} 个应用"
+            f"添加成功: {umo} -> {display_target}\n当前该 UMO 共监听 {app_count} 个应用"
         )
 
     @filter.command("gotify_del")
@@ -208,13 +287,17 @@ class MyPlugin(Star):
 
         args = self.parse_command_args(event)
         if not args:
-            yield event.plain_result("用法: /gotify_del <umo> [app]")
+            yield event.plain_result("用法: /gotify_del <umo> [app|token]")
             return
 
         umo = args[0].strip()
         app = " ".join(args[1:]).strip() if len(args) > 1 else ""
         result_message = ""
         removed_all = False
+        remove_display = app
+
+        if app:
+            await self.update_applications()
 
         async with self.subscriptions_lock:
             apps = self.umo_app_subscriptions.get(umo)
@@ -224,14 +307,27 @@ class MyPlugin(Star):
                 del self.umo_app_subscriptions[umo]
                 await self.save_subscriptions_locked()
                 result_message = f"已删除 UMO {umo} 的全部订阅"
-            elif app not in apps:
-                result_message = f"UMO {umo} 未订阅应用: {app}"
             else:
-                apps.remove(app)
-                if not apps:
-                    del self.umo_app_subscriptions[umo]
-                    removed_all = True
-                await self.save_subscriptions_locked()
+                _, resolved_app_info, _ = self.resolve_application_in_cache(app)
+                remove_candidates = {app}
+                if resolved_app_info:
+                    remove_display = self.format_app_display(
+                        resolved_app_info, fallback=app
+                    )
+                    remove_candidates.update(self.build_app_identifiers(resolved_app_info))
+                    store_value = self.normalize_text(resolved_app_info.get("token"))
+                    if store_value:
+                        remove_candidates.add(store_value)
+
+                remove_key = next((item for item in remove_candidates if item in apps), "")
+                if not remove_key:
+                    result_message = f"UMO {umo} 未订阅应用: {remove_display}"
+                else:
+                    apps.remove(remove_key)
+                    if not apps:
+                        del self.umo_app_subscriptions[umo]
+                        removed_all = True
+                    await self.save_subscriptions_locked()
 
         if result_message:
             yield event.plain_result(result_message)
@@ -239,11 +335,23 @@ class MyPlugin(Star):
 
         if removed_all:
             yield event.plain_result(
-                f"已删除订阅: {umo} -> {app}\n该 UMO 已无任何订阅并自动移除"
+                f"已删除订阅: {umo} -> {remove_display}\n该 UMO 已无任何订阅并自动移除"
             )
             return
 
-        yield event.plain_result(f"已删除订阅: {umo} -> {app}")
+        yield event.plain_result(f"已删除订阅: {umo} -> {remove_display}")
+
+    @filter.command("gotify_clear")
+    async def gotify_clear(self, event: AstrMessageEvent):
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可用")
+            return
+
+        async with self.subscriptions_lock:
+            self.umo_app_subscriptions.clear()
+            await self.put_kv_data(self.STORAGE_KEY, {})
+
+        yield event.plain_result("已清除全部订阅配置")
 
     @filter.command("gotify_list")
     async def gotify_list(self, event: AstrMessageEvent):
@@ -256,6 +364,7 @@ class MyPlugin(Star):
             yield event.plain_result("用法: /gotify_list [umo]")
             return
 
+        await self.update_applications()
         async with self.subscriptions_lock:
             snapshot = {
                 umo: sorted(apps)
@@ -270,7 +379,10 @@ class MyPlugin(Star):
 
             lines = ["当前全部 UMO 订阅:"]
             for idx, umo in enumerate(sorted(snapshot.keys()), start=1):
-                lines.append(f"{idx}. {umo} -> {', '.join(snapshot[umo])}")
+                lines.append(f"{idx}. UMO: {umo}")
+                display_values = self.format_subscription_values(snapshot[umo])
+                for app_idx, display in enumerate(display_values, start=1):
+                    lines.append(f"  {app_idx}. {display}")
             yield event.plain_result("\n".join(lines))
             return
 
@@ -281,8 +393,9 @@ class MyPlugin(Star):
             return
 
         lines = [f"UMO: {umo}", "监听应用:"]
-        for idx, app in enumerate(apps, start=1):
-            lines.append(f"{idx}. {app}")
+        display_values = self.format_subscription_values(apps)
+        for idx, display in enumerate(display_values, start=1):
+            lines.append(f"{idx}. {display}")
         yield event.plain_result("\n".join(lines))
 
     async def terminate(self):
