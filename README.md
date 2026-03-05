@@ -10,6 +10,15 @@
 | ------------ | -------------------------------------------- |
 | Server       | 请输入服务器地址                             |
 | Client Token | Gotify Client Token                          |
-| Application  | 要监听的 Gotify Application, 留空则监听全部. |
-| UMO          | 推送的会话, 可以推送多个, 值为 /sid 的 UMO.  |
+
+---
+
+### 指令
+
+| 指令 | 说明 |
+| --- | --- |
+| `/gotify_add <umo> <app>` | 给指定 UMO 添加一个监听应用 |
+| `/gotify_del <umo> [app]` | 删除指定 UMO 的某个应用；不填 app 时删除该 UMO 全部订阅 |
+| `/gotify_查看` | 查询所有 UMO 的订阅 |
+| `/gotify_查看 <umo>` | 查询指定 UMO 的订阅应用 |
 
