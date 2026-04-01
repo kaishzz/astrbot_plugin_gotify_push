@@ -11,7 +11,7 @@ from astrbot.core.message.message_event_result import MessageChain
 
 @register(
     "astrbot_plugin_gotify_push",
-    "ksbjt",
+    "kaish",
     "监听 Gotify 消息并推送",
     "1.2.5",
 )
