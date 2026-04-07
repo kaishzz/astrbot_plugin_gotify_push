@@ -149,21 +149,6 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(plugin.umo_app_subscriptions, {})
 
-    async def test_load_subscriptions_migrates_legacy_storage(self):
-        plugin = self.create_plugin()
-        target_file = TEST_DATA_ROOT / "plugin_data" / plugin.name / plugin.STORAGE_FILENAME
-        if target_file.exists():
-            target_file.unlink()
-
-        async def fake_get_kv_data(_key, default=None):
-            return {"umo-1": ["token-a", "token-b"]}
-
-        plugin.get_kv_data = fake_get_kv_data
-        await plugin.load_subscriptions()
-
-        self.assertEqual(plugin.umo_app_subscriptions, {"umo-1": {"token-a", "token-b"}})
-        self.assertTrue(target_file.exists())
-
     async def test_cleanup_deleted_subscriptions_removes_stale_tokens(self):
         plugin = self.create_plugin()
         plugin.apps_by_token = {
@@ -205,6 +190,36 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         args = plugin_module.MyPlugin.parse_command_args(event)
 
         self.assertEqual(args, ["umo-1", "app-a"])
+
+    def test_get_subscriptions_file_path_accepts_string_data_root(self):
+        plugin = self.create_plugin()
+
+        original_get_path = plugin_module.get_astrbot_data_path
+        plugin_module.get_astrbot_data_path = lambda: str(TEST_DATA_ROOT)
+        try:
+            result = plugin.get_subscriptions_file_path()
+        finally:
+            plugin_module.get_astrbot_data_path = original_get_path
+
+        self.assertIsInstance(result, Path)
+        self.assertEqual(result.name, plugin.STORAGE_FILENAME)
+
+    def test_get_subscriptions_file_path_accepts_pathlike_data_root(self):
+        plugin = self.create_plugin()
+
+        class DummyPathLike:
+            def __fspath__(self):
+                return str(TEST_DATA_ROOT)
+
+        original_get_path = plugin_module.get_astrbot_data_path
+        plugin_module.get_astrbot_data_path = lambda: DummyPathLike()
+        try:
+            result = plugin.get_subscriptions_file_path()
+        finally:
+            plugin_module.get_astrbot_data_path = original_get_path
+
+        self.assertIsInstance(result, Path)
+        self.assertEqual(result.parent.name, "astrbot_plugin_gotify_push")
 
     def test_prune_runtime_caches_clears_stale_entries(self):
         plugin = self.create_plugin()

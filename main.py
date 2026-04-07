@@ -28,7 +28,6 @@ MutationResult = TypeVar("MutationResult")
 )
 class MyPlugin(Star):
     STORAGE_FILENAME = "subscriptions.json"
-    LEGACY_STORAGE_KEY = "umo_app_subscriptions"
     COMMAND_ALIASES = {"gotify_add", "gotify_del", "gotify_list", "gotify_clear"}
 
     DEFAULT_CLEANUP_INTERVAL_SECONDS = 600
@@ -124,11 +123,14 @@ class MyPlugin(Star):
 
     def get_subscriptions_file_path(self) -> Path:
         plugin_name = getattr(self, "name", "astrbot_plugin_gotify_push")
-        return (
-            get_astrbot_data_path()
-            / "plugin_data"
-            / plugin_name
-            / self.STORAGE_FILENAME
+        data_root = os.fspath(get_astrbot_data_path())
+        return Path(
+            os.path.join(
+                data_root,
+                "plugin_data",
+                plugin_name,
+                self.STORAGE_FILENAME,
+            )
         )
 
     @staticmethod
@@ -175,23 +177,9 @@ class MyPlugin(Star):
 
         return normalized
 
-    async def load_legacy_subscriptions(self) -> Dict[str, Set[str]]:
-        get_kv_data = getattr(self, "get_kv_data", None)
-        if not callable(get_kv_data):
-            return {}
-
-        try:
-            raw_data = await get_kv_data(self.LEGACY_STORAGE_KEY, {})
-        except Exception as exc:
-            logger.warning(f"读取旧版订阅存储失败: {exc}")
-            return {}
-
-        return self.normalize_subscription_payload(raw_data)
-
     async def load_subscriptions(self):
         storage_file = self.get_subscriptions_file_path()
         subscriptions: Dict[str, Set[str]] = {}
-        loaded_from_legacy = False
 
         if storage_file.exists():
             try:
@@ -201,20 +189,9 @@ class MyPlugin(Star):
                 logger.error(f"订阅持久化文件格式错误: {storage_file}, {exc}")
             except Exception as exc:
                 logger.error(f"读取订阅持久化文件失败: {storage_file}, {exc}")
-        else:
-            subscriptions = await self.load_legacy_subscriptions()
-            loaded_from_legacy = bool(subscriptions)
 
         async with self.subscriptions_lock:
             self.umo_app_subscriptions = subscriptions
-
-        if loaded_from_legacy:
-            try:
-                async with self.subscriptions_lock:
-                    await self.save_subscriptions_locked()
-                logger.info("检测到旧版订阅数据，已迁移到文件存储")
-            except Exception as exc:
-                logger.warning(f"旧版订阅数据迁移失败: {exc}")
 
     async def save_subscriptions_locked(self):
         payload = {
