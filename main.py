@@ -24,7 +24,7 @@ MutationResult = TypeVar("MutationResult")
     "astrbot_plugin_gotify_push",
     "kaish",
     "监听 Gotify 消息并推送",
-    "1.0",
+    "1.1",
 )
 class MyPlugin(Star):
     STORAGE_FILENAME = "subscriptions.json"
@@ -120,6 +120,25 @@ class MyPlugin(Star):
             logger.warning(f"配置 {key} 过小，已使用最小值 {minimum}")
             return minimum
         return parsed
+
+    def get_runtime_config_issue(self) -> Optional[Tuple[str, str]]:
+        if not self.server and not self.token:
+            return "missing", "server 和 client_token 尚未配置"
+        if not self.server:
+            return "missing", "server 尚未配置"
+        if not self.server.startswith(("http://", "https://")):
+            return "invalid", "server 必须以 http:// 或 https:// 开头"
+        if not self.token:
+            return "missing", "client_token 尚未配置"
+        return None
+
+    def get_runtime_not_ready_message(self) -> Optional[str]:
+        issue = self.get_runtime_config_issue()
+        if not issue:
+            return None
+
+        _, reason = issue
+        return f"插件暂不可用，请先完成配置: {reason}"
 
     def get_subscriptions_file_path(self) -> Path:
         plugin_name = getattr(self, "name", "astrbot_plugin_gotify_push")
@@ -227,16 +246,16 @@ class MyPlugin(Star):
             return result
 
     def ensure_runtime_ready(self) -> bool:
-        if not self.server:
-            logger.error("Gotify 插件初始化失败: server 配置为空")
-            return False
-        if not self.server.startswith(("http://", "https://")):
-            logger.error("Gotify 插件初始化失败: server 必须以 http:// 或 https:// 开头")
-            return False
-        if not self.token:
-            logger.error("Gotify 插件初始化失败: client_token 配置为空")
-            return False
-        return True
+        issue = self.get_runtime_config_issue()
+        if not issue:
+            return True
+
+        issue_type, reason = issue
+        if issue_type == "missing":
+            logger.info(f"Gotify 插件未启用: {reason}，已跳过初始化")
+        else:
+            logger.error(f"Gotify 插件初始化失败: {reason}")
+        return False
 
     async def update_applications(self) -> bool:
         if not self.gotify:
@@ -649,6 +668,11 @@ class MyPlugin(Star):
         app = self.normalize_text(" ".join(args[1:]))
         if not umo or not app:
             yield event.plain_result("用法: /gotify_add <umo> <app|token>")
+            return
+
+        runtime_message = self.get_runtime_not_ready_message()
+        if runtime_message:
+            yield event.plain_result(runtime_message)
             return
 
         matched_apps, _ = await self.resolve_application_matches(app)

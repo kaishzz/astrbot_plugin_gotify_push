@@ -24,6 +24,18 @@ def install_stub_modules():
     gotify_response_module = types.ModuleType("gotify.response_types")
 
     class DummyLogger:
+        def __init__(self):
+            self.records = {"info": [], "warning": [], "error": []}
+
+        def info(self, message, *args, **kwargs):
+            self.records["info"].append(message)
+
+        def warning(self, message, *args, **kwargs):
+            self.records["warning"].append(message)
+
+        def error(self, message, *args, **kwargs):
+            self.records["error"].append(message)
+
         def __getattr__(self, _name):
             return lambda *args, **kwargs: None
 
@@ -133,8 +145,12 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-    def create_plugin(self):
-        return plugin_module.MyPlugin(self.context, self.config)
+    def create_plugin(self, config=None):
+        if config is None:
+            plugin_config = self.config
+        else:
+            plugin_config = plugin_module.AstrBotConfig(config)
+        return plugin_module.MyPlugin(self.context, plugin_config)
 
     async def test_mutate_subscriptions_rolls_back_when_save_fails(self):
         plugin = self.create_plugin()
@@ -183,6 +199,47 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(self.context.sent_messages), 1)
         self.assertIn("app-a", self.context.sent_messages[0][1])
+
+    async def test_initialize_skips_with_info_log_when_config_missing(self):
+        plugin = self.create_plugin({"client_token": "client-token"})
+
+        await plugin.initialize()
+
+        self.assertIsNone(plugin.gotify)
+        self.assertIsNone(plugin.listen_task)
+        self.assertIsNone(plugin.cleanup_task)
+        self.assertEqual(plugin_module.logger.records["error"], [])
+        self.assertIn(
+            "Gotify 插件未启用: server 尚未配置，已跳过初始化",
+            plugin_module.logger.records["info"],
+        )
+
+    def test_ensure_runtime_ready_logs_error_for_invalid_server(self):
+        plugin = self.create_plugin(
+            {
+                "server": "gotify.example.com",
+                "client_token": "client-token",
+            }
+        )
+
+        ready = plugin.ensure_runtime_ready()
+
+        self.assertFalse(ready)
+        self.assertIn(
+            "Gotify 插件初始化失败: server 必须以 http:// 或 https:// 开头",
+            plugin_module.logger.records["error"],
+        )
+
+    async def test_gotify_add_returns_config_hint_when_runtime_not_ready(self):
+        plugin = self.create_plugin({"client_token": "client-token"})
+        event = plugin_module.AstrMessageEvent("/gotify_add umo-1 app-a")
+
+        results = [item async for item in plugin.gotify_add(event)]
+
+        self.assertEqual(
+            results,
+            ["插件暂不可用，请先完成配置: server 尚未配置"],
+        )
 
     def test_parse_command_args_strips_alias(self):
         event = plugin_module.AstrMessageEvent("/gotify_add umo-1 app-a")
