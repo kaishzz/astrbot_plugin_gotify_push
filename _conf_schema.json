@@ -1,0 +1,54 @@
+{
+    "server": {
+        "description": "Gotify Server",
+        "type": "string",
+        "hint": "请输入完整服务器地址，例如 https://gotify.example.com"
+    },
+    "client_token": {
+        "description": "Client Token",
+        "type": "string",
+        "hint": "请输入 Gotify Client Token（需要具备接收消息流权限）"
+    },
+    "cleanup_interval_seconds": {
+        "description": "Cleanup Interval",
+        "type": "int",
+        "hint": "失效订阅自动清理周期，单位秒，最小 60",
+        "default": 600
+    },
+    "reconnect_delay_seconds": {
+        "description": "Reconnect Delay",
+        "type": "int",
+        "hint": "Gotify 连接断开后的重连间隔，单位秒，最小 3",
+        "default": 15
+    },
+    "rate_limit_window_seconds": {
+        "description": "Rate Limit Window",
+        "type": "int",
+        "hint": "单个 UMO 的限流时间窗口，单位秒，最小 1",
+        "default": 60
+    },
+    "rate_limit_max_messages": {
+        "description": "Rate Limit Count",
+        "type": "int",
+        "hint": "单个 UMO 在限流窗口内最多接收多少条消息，最小 1",
+        "default": 20
+    },
+    "duplicate_window_seconds": {
+        "description": "Duplicate Window",
+        "type": "int",
+        "hint": "相同消息的去重窗口，单位秒，设为 0 可关闭",
+        "default": 10
+    },
+    "max_title_length": {
+        "description": "Max Title Length",
+        "type": "int",
+        "hint": "转发时标题最大长度，超出会截断，最小 20",
+        "default": 200
+    },
+    "max_body_length": {
+        "description": "Max Body Length",
+        "type": "int",
+        "hint": "转发时正文最大长度，超出会截断，最小 100",
+        "default": 2000
+    }
+}
