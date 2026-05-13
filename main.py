@@ -24,7 +24,7 @@ MutationResult = TypeVar("MutationResult")
     "astrbot_plugin_gotify_push",
     "kaish",
     "监听 Gotify 消息并推送",
-    "1.1",
+    "1.2",
 )
 class MyPlugin(Star):
     STORAGE_FILENAME = "subscriptions.json"
@@ -436,7 +436,7 @@ class MyPlugin(Star):
     def build_message_content(self, app_name: str, msg: Message) -> str:
         title = self.truncate_text(msg.get("title"), self.max_title_length, "无标题")
         body = self.truncate_text(msg.get("message"), self.max_body_length, "无内容")
-        return f"--- Message ---\n应用：{app_name}\n标题：{title}\n内容：{body}"
+        return f"标题：{title}\n内容：{body}"
 
     def build_message_fingerprint(self, app_id: str, msg: Message) -> str:
         title = self.normalize_text(msg.get("title"))
