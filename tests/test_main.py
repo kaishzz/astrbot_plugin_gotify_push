@@ -198,7 +198,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         await plugin.handle_message({"appid": 1, "title": "hello-2", "message": "world-2"})
 
         self.assertEqual(len(self.context.sent_messages), 1)
-        self.assertEqual(self.context.sent_messages[0][1], "标题：hello\n内容：world")
+        self.assertEqual(self.context.sent_messages[0][1], "hello\n----------\nworld")
 
     def test_build_message_content_uses_title_and_body_layout(self):
         plugin = self.create_plugin()
@@ -210,7 +210,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             result,
-            "标题：Uptime-Kuma\n内容：[开水服官网] [✅ Up] 200 - OK",
+            "Uptime-Kuma\n----------\n[开水服官网] [✅ Up] 200 - OK",
         )
 
     async def test_initialize_skips_with_info_log_when_config_missing(self):
