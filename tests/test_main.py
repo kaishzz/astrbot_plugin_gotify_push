@@ -180,6 +180,29 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(removed_count, 2)
         self.assertEqual(plugin.umo_app_subscriptions, {"umo-1": {"token-a"}})
 
+    async def test_cleanup_deleted_subscriptions_removes_all_when_no_apps_remain(self):
+        plugin = self.create_plugin()
+        plugin.apps_by_token = {}
+        plugin.umo_app_subscriptions = {
+            "umo-1": {"token-a"},
+            "umo-2": {"token-b"},
+        }
+
+        removed_count = await plugin.cleanup_deleted_subscriptions()
+
+        self.assertEqual(removed_count, 2)
+        self.assertEqual(plugin.umo_app_subscriptions, {})
+
+    def test_normalize_subscription_payload_ignores_non_string_apps(self):
+        normalized = plugin_module.MyPlugin.normalize_subscription_payload(
+            {
+                "umo-1": ["token-a", None, 123, "  token-b  "],
+                "umo-2": None,
+            }
+        )
+
+        self.assertEqual(normalized, {"umo-1": {"token-a", "token-b"}})
+
     async def test_clear_umo_subscriptions_removes_whole_entry(self):
         plugin = self.create_plugin()
         plugin.umo_app_subscriptions = {"umo-1": {"token-a", "token-b"}}
@@ -195,7 +218,9 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         plugin.umo_app_subscriptions = {"umo-1": {"token-a"}}
 
         await plugin.handle_message({"appid": 1, "title": "hello", "message": "world"})
-        await plugin.handle_message({"appid": 1, "title": "hello-2", "message": "world-2"})
+        await plugin.handle_message(
+            {"appid": 1, "title": "hello-2", "message": "world-2"}
+        )
 
         self.assertEqual(len(self.context.sent_messages), 1)
         self.assertEqual(self.context.sent_messages[0][1], "hello\n----------\nworld")
@@ -223,7 +248,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(plugin.cleanup_task)
         self.assertEqual(plugin_module.logger.records["error"], [])
         self.assertIn(
-            "Gotify 插件未启用: server 尚未配置，已跳过初始化",
+            "Gotify 插件未启用: server 尚未配置, 已跳过初始化",
             plugin_module.logger.records["info"],
         )
 
@@ -251,7 +276,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             results,
-            ["插件暂不可用，请先完成配置: server 尚未配置"],
+            ["插件暂不可用, 请先完成配置: server 尚未配置"],
         )
 
     def test_parse_command_args_strips_alias(self):

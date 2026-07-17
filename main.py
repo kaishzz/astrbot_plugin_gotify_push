@@ -24,7 +24,7 @@ MutationResult = TypeVar("MutationResult")
     "astrbot_plugin_gotify_push",
     "kaish",
     "监听 Gotify 消息并推送",
-    "1.2",
+    "1.3",
 )
 class MyPlugin(Star):
     STORAGE_FILENAME = "subscriptions.json"
@@ -114,10 +114,10 @@ class MyPlugin(Star):
         try:
             parsed = int(value)
         except (TypeError, ValueError):
-            logger.warning(f"配置 {key} 无效，已使用默认值 {default}")
+            logger.warning(f"配置 {key} 无效, 已使用默认值 {default}")
             return default
         if parsed < minimum:
-            logger.warning(f"配置 {key} 过小，已使用最小值 {minimum}")
+            logger.warning(f"配置 {key} 过小, 已使用最小值 {minimum}")
             return minimum
         return parsed
 
@@ -138,7 +138,7 @@ class MyPlugin(Star):
             return None
 
         _, reason = issue
-        return f"插件暂不可用，请先完成配置: {reason}"
+        return f"插件暂不可用, 请先完成配置: {reason}"
 
     def get_subscriptions_file_path(self) -> Path:
         plugin_name = getattr(self, "name", "astrbot_plugin_gotify_push")
@@ -190,7 +190,11 @@ class MyPlugin(Star):
             else:
                 continue
 
-            apps = {str(app).strip() for app in apps_iterable if str(app).strip()}
+            apps = {
+                app.strip()
+                for app in apps_iterable
+                if isinstance(app, str) and app.strip()
+            }
             if apps:
                 normalized[umo] = apps
 
@@ -230,8 +234,7 @@ class MyPlugin(Star):
     ) -> MutationResult:
         async with self.subscriptions_lock:
             snapshot = {
-                umo: set(apps)
-                for umo, apps in self.umo_app_subscriptions.items()
+                umo: set(apps) for umo, apps in self.umo_app_subscriptions.items()
             }
             changed, result = mutation(self.umo_app_subscriptions)
             if not changed:
@@ -252,7 +255,7 @@ class MyPlugin(Star):
 
         issue_type, reason = issue
         if issue_type == "missing":
-            logger.info(f"Gotify 插件未启用: {reason}，已跳过初始化")
+            logger.info(f"Gotify 插件未启用: {reason}, 已跳过初始化")
         else:
             logger.error(f"Gotify 插件初始化失败: {reason}")
         return False
@@ -361,8 +364,6 @@ class MyPlugin(Star):
 
     async def cleanup_deleted_subscriptions(self) -> int:
         known_tokens = set(self.apps_by_token.keys())
-        if not known_tokens:
-            return 0
 
         def mutation(
             subscriptions: Dict[str, Set[str]],
@@ -417,7 +418,9 @@ class MyPlugin(Star):
                         continue
                     removed_count = await self.cleanup_deleted_subscriptions()
                     if removed_count > 0:
-                        logger.info(f"定时清理完成，已自动清理 {removed_count} 条失效订阅")
+                        logger.info(
+                            f"定时清理完成, 已自动清理 {removed_count} 条失效订阅"
+                        )
                 except Exception as exc:
                     logger.error(f"定时清理任务异常: {exc}")
         except asyncio.CancelledError:
@@ -509,7 +512,7 @@ class MyPlugin(Star):
         self.listen_task = asyncio.create_task(self.start_listen())
         self.cleanup_task = asyncio.create_task(self.run_periodic_cleanup())
         logger.info(
-            f"插件初始化完成，已加载 {len(self.umo_app_subscriptions)} 个 UMO 订阅"
+            f"插件初始化完成, 已加载 {len(self.umo_app_subscriptions)} 个 UMO 订阅"
         )
 
     async def handle_message(self, msg: Message):
@@ -534,7 +537,7 @@ class MyPlugin(Star):
             return
 
         if self.is_duplicate_message(app_id, msg):
-            logger.warning(f"检测到重复推送，已跳过 appid={app_id}")
+            logger.warning(f"检测到重复推送, 已跳过 appid={app_id}")
             return
 
         app_identifiers = self.build_app_identifiers(app_info)
@@ -567,7 +570,7 @@ class MyPlugin(Star):
 
         if dropped_umos:
             logger.warning(
-                f"消息推送触发限流，已跳过 {len(dropped_umos)} 个 UMO: "
+                f"消息推送触发限流, 已跳过 {len(dropped_umos)} 个 UMO: "
                 + ", ".join(dropped_umos[:5])
             )
 
@@ -585,7 +588,7 @@ class MyPlugin(Star):
                 logger.info("Gotify 监听任务已停止")
                 raise
             except Exception as exc:
-                logger.error(f"Gotify 连接断开，已收到消息数 {received}，{exc}")
+                logger.error(f"Gotify 连接断开, 已收到消息数 {received}, {exc}")
 
             await asyncio.sleep(self.reconnect_delay_seconds)
 
@@ -677,7 +680,7 @@ class MyPlugin(Star):
 
         matched_apps, _ = await self.resolve_application_matches(app)
         if not matched_apps:
-            yield event.plain_result("未找到应用，请填写 app name 或 app token")
+            yield event.plain_result("未找到应用, 请填写 app name 或 app token")
             return
 
         token_display_map: Dict[str, str] = {}
@@ -691,7 +694,7 @@ class MyPlugin(Star):
 
         target_tokens = sorted(token_display_map.keys())
         if not target_tokens:
-            yield event.plain_result("匹配到的应用都未返回 token，无法添加订阅")
+            yield event.plain_result("匹配到的应用都未返回 token, 无法添加订阅")
             return
 
         try:
@@ -701,7 +704,7 @@ class MyPlugin(Star):
             )
         except Exception as exc:
             logger.error(f"保存订阅失败: {exc}")
-            yield event.plain_result("保存订阅失败，请检查插件日志或磁盘权限")
+            yield event.plain_result("保存订阅失败, 请检查插件日志或磁盘权限")
             return
 
         if not new_tokens:
@@ -724,7 +727,7 @@ class MyPlugin(Star):
 
         yield event.plain_result(
             f"添加成功: {umo} -> {app}\n"
-            f"本次新增 {len(new_tokens)} 个 token，已存在 {len(existed_tokens)} 个\n"
+            f"本次新增 {len(new_tokens)} 个 token, 已存在 {len(existed_tokens)} 个\n"
             f"当前该 UMO 共监听 {app_count} 个应用"
         )
 
@@ -756,7 +759,7 @@ class MyPlugin(Star):
                 await self.clear_umo_subscriptions(umo)
             except Exception as exc:
                 logger.error(f"删除订阅失败: {exc}")
-                yield event.plain_result("删除订阅失败，请检查插件日志或磁盘权限")
+                yield event.plain_result("删除订阅失败, 请检查插件日志或磁盘权限")
                 return
 
             yield event.plain_result(f"已删除 UMO {umo} 的全部订阅")
@@ -787,7 +790,7 @@ class MyPlugin(Star):
             )
         except Exception as exc:
             logger.error(f"删除订阅失败: {exc}")
-            yield event.plain_result("删除订阅失败，请检查插件日志或磁盘权限")
+            yield event.plain_result("删除订阅失败, 请检查插件日志或磁盘权限")
             return
 
         if removed_token_count == 0:
@@ -832,7 +835,7 @@ class MyPlugin(Star):
             await self.clear_subscriptions()
         except Exception as exc:
             logger.error(f"清除订阅失败: {exc}")
-            yield event.plain_result("清除订阅失败，请检查插件日志或磁盘权限")
+            yield event.plain_result("清除订阅失败, 请检查插件日志或磁盘权限")
             return
 
         yield event.plain_result("已清除全部订阅配置")
